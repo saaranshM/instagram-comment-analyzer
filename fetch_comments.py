@@ -48,8 +48,8 @@ def main():
     )
     parser.add_argument(
         "--handle",
-        default="dreamy.loopz",
-        help="Instagram handle to fetch from. Default: dreamy.loopz",
+        default=os.environ.get("INSTAGRAM_HANDLE", ""),
+        help="Instagram handle to fetch from. Or set INSTAGRAM_HANDLE in .env",
     )
     parser.add_argument("--brand", help="Filter results to this brand")
     parser.add_argument("--car", help="Filter results to this car model")
@@ -62,6 +62,14 @@ def main():
 
     # Load environment variables
     load_dotenv()
+
+    if not args.handle:
+        print(
+            "Error: No Instagram handle specified.\n"
+            "Use --handle your_account or set INSTAGRAM_HANDLE in .env",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Step 1: Detect mode and fetch comments
     mode = _detect_mode(args.mode)

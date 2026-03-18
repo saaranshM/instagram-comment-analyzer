@@ -16,6 +16,8 @@ from car_dictionary import CAR_DATABASE
 from filters import filter_comments, filter_results
 from output import aggregate_results, build_output
 
+DEFAULT_HANDLE = os.environ.get("INSTAGRAM_HANDLE", "")
+
 # Load model once at startup
 print("Starting server, loading model...", file=sys.stderr)
 extractor = CarExtractor()
@@ -30,13 +32,24 @@ app = FastAPI(
 
 class AnalyzeRequest(BaseModel):
     last: int
-    handle: str = "dreamy.loopz"
+    handle: str = ""
     mode: Optional[str] = None
     brand: Optional[str] = None
     car: Optional[str] = None
     text: Optional[str] = None
     min_score: Optional[int] = None
     top_n: Optional[int] = None
+
+
+def _resolve_handle(handle):
+    """Resolve handle from request, env default, or error."""
+    h = handle or DEFAULT_HANDLE
+    if not h:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing 'handle' parameter. Pass ?handle=your_account or set INSTAGRAM_HANDLE in .env",
+        )
+    return h
 
 
 def _detect_mode(explicit_mode):
@@ -70,7 +83,7 @@ def list_brands():
 @app.get("/top")
 def top_car(
     last: int = 10,
-    handle: str = "dreamy.loopz",
+    handle: str = "",
     mode: Optional[str] = None,
 ):
     """Get just the single most requested car. Designed for automation."""
@@ -90,16 +103,17 @@ def top_car(
 
 def _run_analysis(req: AnalyzeRequest):
     """Core analysis pipeline shared by all endpoints."""
+    handle = _resolve_handle(req.handle)
     mode = _detect_mode(req.mode)
 
     # Fetch comments
     rate_limited = False
     if mode == "api":
         from instagram_api import fetch_via_api
-        comments, posts_count, rate_limited = fetch_via_api(req.handle, req.last)
+        comments, posts_count, rate_limited = fetch_via_api(handle, req.last)
     else:
         from apify_scraper import fetch_via_apify
-        comments, posts_count = fetch_via_apify(req.handle, req.last)
+        comments, posts_count = fetch_via_apify(handle, req.last)
 
     if not comments:
         raise HTTPException(status_code=404, detail="No comments found")
@@ -130,7 +144,7 @@ def _run_analysis(req: AnalyzeRequest):
 
     metadata = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "account": f"@{req.handle}",
+        "account": f"@{handle}",
         "mode": mode,
         "posts_scanned": posts_count,
         "total_comments_analyzed": len(comments),
@@ -161,7 +175,7 @@ def analyze(req: AnalyzeRequest):
 @app.get("/analyze")
 def analyze_get(
     last: int,
-    handle: str = "dreamy.loopz",
+    handle: str = "",
     mode: Optional[str] = None,
     brand: Optional[str] = None,
     car: Optional[str] = None,
