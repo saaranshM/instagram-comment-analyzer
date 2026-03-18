@@ -17,19 +17,20 @@ class CarExtractor:
         text_lower = text.lower()
         matches = set()
 
+        words = text_lower.split()
         for alias, brand, model in self.lookup_table:
+            alias_len = len(alias)
+            # Very short aliases (e.g., "mg", "vw", "byd", "tata", "kia", "benz")
+            # must appear as an exact word to avoid false positives
+            if alias_len <= 4:
+                if alias in words:
+                    matches.add((brand, model))
+                continue
+
             # Use partial_ratio for substring matching (handles "brezza plz")
             score = fuzz.partial_ratio(alias, text_lower)
-            # Higher threshold for short aliases to avoid false positives
-            threshold = 85 if len(alias) <= 3 else 75
+            threshold = 85 if alias_len <= 6 else 75
             if score >= threshold:
-                # Verify the alias actually appears as a meaningful match
-                # (partial_ratio can match short strings spuriously)
-                if len(alias) <= 2:
-                    # Very short aliases (e.g., "mg", "vw") need near-exact word match
-                    words = text_lower.split()
-                    if alias not in words:
-                        continue
                 matches.add((brand, model))
 
         return matches
