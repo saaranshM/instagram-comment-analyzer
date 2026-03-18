@@ -9,6 +9,30 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 
+def _detect_mode(explicit_mode):
+    """Auto-detect fetch mode: prefer API if credentials exist, else Apify."""
+    if explicit_mode:
+        return explicit_mode
+
+    # Prefer Instagram Graph API (free, no rate limits for account owner)
+    if os.environ.get("INSTAGRAM_ACCESS_TOKEN") and os.environ.get("INSTAGRAM_USER_ID"):
+        return "api"
+
+    # Fall back to Apify
+    if os.environ.get("APIFY_API_TOKEN"):
+        return "scrape"
+
+    print(
+        "Error: No credentials found. Set one of:\n"
+        "  1. INSTAGRAM_ACCESS_TOKEN + INSTAGRAM_USER_ID (free, recommended)\n"
+        "     Ask the account owner to generate a token at developers.facebook.com\n"
+        "  2. APIFY_API_TOKEN (free tier, sign up at apify.com)\n"
+        "Add them to your .env file.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze Instagram comments for car requests"
@@ -19,8 +43,8 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["scrape", "api"],
-        default="scrape",
-        help="Fetch mode: scrape (Apify) or api (Graph API). Default: scrape",
+        default=None,
+        help="Fetch mode: api (Graph API, free) or scrape (Apify). Auto-detects if omitted.",
     )
     parser.add_argument(
         "--handle",
@@ -39,16 +63,20 @@ def main():
     # Load environment variables
     load_dotenv()
 
-    # Step 1: Fetch comments
+    # Step 1: Detect mode and fetch comments
+    mode = _detect_mode(args.mode)
     rate_limited = False
-    if args.mode == "scrape":
-        from apify_scraper import fetch_via_apify
 
-        comments, posts_count = fetch_via_apify(args.handle, args.last)
-    else:
+    if mode == "api":
         from instagram_api import fetch_via_api
 
+        print("Using Instagram Graph API (free, account owner token).", file=sys.stderr)
         comments, posts_count, rate_limited = fetch_via_api(args.handle, args.last)
+    else:
+        from apify_scraper import fetch_via_apify
+
+        print("Using Apify scraper (no Instagram login needed).", file=sys.stderr)
+        comments, posts_count = fetch_via_apify(args.handle, args.last)
 
     if not comments:
         print("No comments found.", file=sys.stderr)
@@ -80,7 +108,7 @@ def main():
     metadata = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "account": f"@{args.handle}",
-        "mode": args.mode,
+        "mode": mode,
         "posts_scanned": posts_count,
         "total_comments_analyzed": len(comments),
         "car_mentions_found": len(extractions),
