@@ -3,7 +3,10 @@ import sys
 import time
 import requests
 
-BASE_URL = "https://graph.instagram.com/v21.0"
+BASE_URL = "https://graph.instagram.com/v24.0"
+
+# Rate limit sentinel — returned by _api_request when rate limited
+_RATE_LIMITED = object()
 
 
 def _get_credentials():
@@ -12,8 +15,22 @@ def _get_credentials():
     if not token or not user_id:
         print(
             "Error: INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_USER_ID must be set.\n"
-            "Ask the account owner to generate a token at developers.facebook.com\n"
-            "and add both values to your .env file.",
+            "\n"
+            "How to get them (free):\n"
+            "  1. Convert @dreamy.loopz to a Business/Creator account (Settings > Account type)\n"
+            "  2. Go to developers.facebook.com > Create App > Business type\n"
+            "  3. Add 'Instagram' product to your app\n"
+            "  4. Generate a token via Instagram Login flow\n"
+            "  5. Exchange for a long-lived token (60 days):\n"
+            "     GET https://graph.instagram.com/access_token\n"
+            "       ?grant_type=ig_exchange_token\n"
+            "       &client_secret=YOUR_APP_SECRET\n"
+            "       &access_token=SHORT_LIVED_TOKEN\n"
+            "  6. Get your user ID:\n"
+            "     GET https://graph.instagram.com/me?fields=id,username&access_token=TOKEN\n"
+            "  7. Add both to .env:\n"
+            "     INSTAGRAM_ACCESS_TOKEN=your_long_lived_token\n"
+            "     INSTAGRAM_USER_ID=your_user_id\n",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -21,7 +38,13 @@ def _get_credentials():
 
 
 def _api_request(url, params, retries=1):
-    """Make a Graph API request with basic retry on 5xx."""
+    """Make a Graph API request with basic retry on 5xx.
+
+    Returns:
+        dict: response data on success
+        _RATE_LIMITED: on rate limit (codes 4, 17)
+        None: on other failure (after retries)
+    """
     for attempt in range(retries + 1):
         resp = requests.get(url, params=params, timeout=30)
         data = resp.json()
@@ -33,25 +56,42 @@ def _api_request(url, params, retries=1):
         code = error.get("code")
 
         if code == 190:
+            sub_code = error.get("error_subcode")
+            if sub_code == 463:
+                msg = "Token has expired."
+            elif sub_code == 460:
+                msg = "Password was changed."
+            elif sub_code == 458:
+                msg = "App was removed."
+            else:
+                msg = "Token is invalid."
             print(
-                "Error: Instagram access token has expired.\n"
-                "Ask the account owner to refresh it at developers.facebook.com.",
+                f"Error: Instagram API — {msg}\n"
+                "The account owner needs to generate a new token.\n"
+                "Refresh a valid long-lived token:\n"
+                "  GET https://graph.instagram.com/refresh_access_token\n"
+                "    ?grant_type=ig_refresh_token&access_token=CURRENT_TOKEN\n"
+                "(Refresh every ~50 days to prevent expiration.)",
                 file=sys.stderr,
             )
             sys.exit(1)
 
         if code in (4, 17):
             print(
-                "Warning: Rate limit hit. Partial data may have been saved.",
+                "Warning: Rate limit hit (200 calls/hour). Saving partial results.",
                 file=sys.stderr,
             )
-            return None  # Caller handles partial results
+            return _RATE_LIMITED
 
         if resp.status_code >= 500 and attempt < retries:
             time.sleep(2)
             continue
 
-        print(f"Error: Instagram API returned {resp.status_code}: {error.get('message', resp.text)}", file=sys.stderr)
+        print(
+            f"Error: Instagram API returned {resp.status_code}: "
+            f"{error.get('message', resp.text)}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     return None
@@ -68,7 +108,7 @@ def fetch_recent_posts(count):
 
     while len(posts) < count:
         data = _api_request(url, params)
-        if data is None:
+        if data is _RATE_LIMITED or data is None:
             break
         posts.extend(data.get("data", []))
         paging = data.get("paging", {})
@@ -82,16 +122,23 @@ def fetch_recent_posts(count):
 
 
 def fetch_comments(media_id):
-    """Fetch all comments for a single media post."""
+    """Fetch all comments for a single media post.
+
+    Returns (comments_list, rate_limited_bool).
+    """
     token, _ = _get_credentials()
     fields = "id,text,timestamp,username,like_count"
     url = f"{BASE_URL}/{media_id}/comments"
 
     comments = []
+    rate_limited = False
     params = {"fields": fields, "access_token": token, "limit": 50}
 
     while True:
         data = _api_request(url, params)
+        if data is _RATE_LIMITED:
+            rate_limited = True
+            break
         if data is None:
             break
         comments.extend(data.get("data", []))
@@ -102,7 +149,7 @@ def fetch_comments(media_id):
         url = next_url
         params = {}
 
-    return comments
+    return comments, rate_limited
 
 
 def fetch_via_api(handle, count):
@@ -115,10 +162,9 @@ def fetch_via_api(handle, count):
     all_comments = []
     for post in posts:
         media_id = post["id"]
-        comments = fetch_comments(media_id)
-        if comments is None:
+        comments, hit_limit = fetch_comments(media_id)
+        if hit_limit:
             rate_limited = True
-            break
         for c in comments:
             all_comments.append(
                 {
@@ -129,6 +175,8 @@ def fetch_via_api(handle, count):
                     "like_count": c.get("like_count", 0),
                 }
             )
+        if rate_limited:
+            break
 
     print(f"  Found {len(all_comments)} comments.", file=sys.stderr)
     return all_comments, len(posts), rate_limited
