@@ -12,6 +12,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from car_extractor import CarExtractor
+from car_dictionary import CAR_DATABASE
 from filters import filter_comments, filter_results
 from output import aggregate_results, build_output
 
@@ -20,7 +21,11 @@ print("Starting server, loading model...", file=sys.stderr)
 extractor = CarExtractor()
 print("Server ready.", file=sys.stderr)
 
-app = FastAPI(title="Instagram Comment Analyzer", version="1.0.0")
+app = FastAPI(
+    title="Instagram Comment Analyzer",
+    version="1.0.0",
+    description="Analyze Instagram comments for car requests using hybrid NER (GLiNER + fuzzy dictionary).",
+)
 
 
 class AnalyzeRequest(BaseModel):
@@ -30,6 +35,8 @@ class AnalyzeRequest(BaseModel):
     brand: Optional[str] = None
     car: Optional[str] = None
     text: Optional[str] = None
+    min_score: Optional[int] = None
+    top_n: Optional[int] = None
 
 
 def _detect_mode(explicit_mode):
@@ -47,22 +54,51 @@ def _detect_mode(explicit_mode):
 
 @app.get("/health")
 def health():
+    """Check server status and model readiness."""
     return {"status": "ok", "model_loaded": True}
 
 
-@app.post("/analyze")
-def analyze(req: AnalyzeRequest):
+@app.get("/brands")
+def list_brands():
+    """List all supported car brands and their models."""
+    result = {}
+    for brand, data in CAR_DATABASE.items():
+        result[brand] = list(data["models"].keys())
+    return result
+
+
+@app.get("/top")
+def top_car(
+    last: int = 10,
+    handle: str = "dreamy.loopz",
+    mode: Optional[str] = None,
+):
+    """Get just the single most requested car. Designed for automation."""
+    data = _run_analysis(AnalyzeRequest(last=last, handle=handle, mode=mode))
+    if not data["rankings"]:
+        return {"car": None, "message": "No car requests found"}
+    top = data["rankings"][0]
+    return {
+        "car": f"{top['brand']} {top['model']}" if top["model"] else top["brand"],
+        "brand": top["brand"],
+        "model": top["model"],
+        "request_count": top["request_count"],
+        "weighted_score": top["weighted_score"],
+        "sample_comments": top["sample_comments"],
+    }
+
+
+def _run_analysis(req: AnalyzeRequest):
+    """Core analysis pipeline shared by all endpoints."""
     mode = _detect_mode(req.mode)
 
     # Fetch comments
     rate_limited = False
     if mode == "api":
         from instagram_api import fetch_via_api
-
         comments, posts_count, rate_limited = fetch_via_api(req.handle, req.last)
     else:
         from apify_scraper import fetch_via_apify
-
         comments, posts_count = fetch_via_apify(req.handle, req.last)
 
     if not comments:
@@ -82,6 +118,16 @@ def analyze(req: AnalyzeRequest):
     # Aggregate
     rankings, brand_summary = aggregate_results(extractions)
 
+    # Apply min_score filter
+    if req.min_score:
+        rankings = [r for r in rankings if r["weighted_score"] >= req.min_score]
+        for i, r in enumerate(rankings):
+            r["rank"] = i + 1
+
+    # Apply top_n limit
+    if req.top_n:
+        rankings = rankings[: req.top_n]
+
     metadata = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "account": f"@{req.handle}",
@@ -93,6 +139,8 @@ def analyze(req: AnalyzeRequest):
             "brand": req.brand,
             "car": req.car,
             "text": req.text,
+            "min_score": req.min_score,
+            "top_n": req.top_n,
         },
     }
 
@@ -104,7 +152,12 @@ def analyze(req: AnalyzeRequest):
     return data
 
 
-# Convenience GET endpoint
+@app.post("/analyze")
+def analyze(req: AnalyzeRequest):
+    """Full analysis with all filter options. Returns ranked car requests."""
+    return _run_analysis(req)
+
+
 @app.get("/analyze")
 def analyze_get(
     last: int,
@@ -113,7 +166,11 @@ def analyze_get(
     brand: Optional[str] = None,
     car: Optional[str] = None,
     text: Optional[str] = None,
+    min_score: Optional[int] = None,
+    top_n: Optional[int] = None,
 ):
-    return analyze(AnalyzeRequest(
-        last=last, handle=handle, mode=mode, brand=brand, car=car, text=text
+    """Full analysis via GET. Same as POST /analyze but with query params."""
+    return _run_analysis(AnalyzeRequest(
+        last=last, handle=handle, mode=mode, brand=brand,
+        car=car, text=text, min_score=min_score, top_n=top_n,
     ))
