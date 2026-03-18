@@ -1,8 +1,12 @@
+import os
 import re
 import sys
 from gliner import GLiNER
 from rapidfuzz import fuzz
 from car_dictionary import CAR_DATABASE, build_lookup_table
+
+# Local model path (bundled in repo, no HF download needed)
+_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "gliner_multi-v2.1")
 
 # Common Hindi/English words GLiNER may incorrectly tag as vehicles
 GLINER_REJECT_WORDS = {
@@ -29,8 +33,12 @@ def _clean_words(text):
 
 class CarExtractor:
     def __init__(self):
-        print("Loading GLiNER model (first run downloads ~781MB)...", file=sys.stderr)
-        self.model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+        print("Loading GLiNER model...", file=sys.stderr)
+        if os.path.isdir(_MODEL_DIR) and os.path.exists(os.path.join(_MODEL_DIR, "gliner_config.json")):
+            self.model = GLiNER.from_pretrained(_MODEL_DIR, local_files_only=True)
+        else:
+            print("  Local model not found, downloading from HuggingFace...", file=sys.stderr)
+            self.model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
         self.labels = ["car brand", "car model", "vehicle"]
         self.lookup_table = build_lookup_table()
         print("Model loaded.", file=sys.stderr)
