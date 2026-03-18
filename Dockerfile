@@ -15,4 +15,7 @@ COPY *.py .
 # Create output directory
 RUN mkdir -p /app/output
 
-ENTRYPOINT ["python", "fetch_comments.py"]
+EXPOSE 8000
+
+# Run the API server (model loads once at startup)
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
