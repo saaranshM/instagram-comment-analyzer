@@ -188,7 +188,7 @@ def test_api_fetch():
 
 
 def test_api_with_ner(comments):
-    """Test that NER correctly extracts cars from API-formatted comments."""
+    """Test that NER correctly extracts entities from API-formatted comments."""
     from taxonomy import Taxonomy
     from entity_extractor import EntityExtractor
 
@@ -214,9 +214,9 @@ def test_api_with_ner(comments):
     assert "Ertiga" in models, "Should find Ertiga"
     assert "Swift" in models, "Should find Swift"
 
-    # "nice video" should NOT produce car matches
+    # "nice video" should NOT produce entity matches
     nice_video_matches = [r for r in results if r["source_comment"] == "nice video 🔥🔥"]
-    assert len(nice_video_matches) == 0, "nice video should have no car matches"
+    assert len(nice_video_matches) == 0, "nice video should have no entity matches"
 
     print("\n✓ NER extraction test passed")
 
@@ -237,8 +237,10 @@ def test_full_pipeline(comments):
         "mode": "api",
         "posts_scanned": 2,
         "total_comments_analyzed": len(comments),
-        "car_mentions_found": len(extractions),
-        "filters_applied": {"brand": None, "car": None, "text": None},
+        "taxonomy": "cars",
+        "taxonomy_name": "Cars & Vehicles",
+        "entity_mentions_found": len(extractions),
+        "filters_applied": {"brand": None, "item": None, "text": None},
     }
     data = build_output(rankings, brand_summary, metadata)
 
