@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy bundled GLiNER model (no HF download needed)
 COPY models/ models/
 
-# Copy application code
+# Copy taxonomies and application code
+COPY taxonomies/ taxonomies/
 COPY *.py .
 
 # Create output directory

@@ -6,12 +6,16 @@ def filter_comments(comments, text=None):
     return comments
 
 
-def filter_results(results, brand=None, car=None):
-    """Post-filter: filter extracted car results by brand or model."""
+def filter_results(results, brand=None, item=None, car=None):
+    """Post-filter: filter extracted results by brand or item (model).
+
+    'car' is a backward-compat alias for 'item'.
+    """
     if brand:
         brand_lower = brand.lower()
         results = [r for r in results if brand_lower in r["brand"].lower()]
-    if car:
-        car_lower = car.lower()
-        results = [r for r in results if r["model"] and car_lower in r["model"].lower()]
+    item_filter = item or car
+    if item_filter:
+        item_lower = item_filter.lower()
+        results = [r for r in results if r["model"] and item_lower in r["model"].lower()]
     return results

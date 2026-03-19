@@ -1,0 +1,99 @@
+taxonomy:
+  id: sneakers
+  name: "Sneakers & Shoes"
+  domain: sneaker
+  group_label: brand
+  item_label: model
+  gliner_labels:
+    - "shoe brand"
+    - "sneaker model"
+    - "footwear"
+    - "shoe"
+  reject_words:
+    - shoe
+    - shoes
+    - sneaker
+    - sneakers
+    - pair
+    - bhai
+    - bro
+    - please
+    - video
+    - fire
+    - love
+    - best
+    - nice
+    - cool
+    - king
+    - drip
+    - size
+    - color
+    - black
+    - white
+    - red
+    - blue
+  strip_prefixes:
+    - "new "
+    - "old "
+    - "og "
+    - "ds "
+
+entities:
+  "Nike":
+    aliases: [nike, nikee]
+    models:
+      "Air Jordan 1": [jordan 1, aj1, air jordan 1]
+      "Air Jordan 4": [jordan 4, aj4, air jordan 4]
+      "Air Jordan 11": [jordan 11, aj11, air jordan 11]
+      "Air Force 1": [air force 1, af1, airforce 1, forces]
+      "Dunk Low": [dunk low, dunk, nike dunk]
+      "Dunk High": [dunk high]
+      "Air Max 1": [air max 1, airmax 1]
+      "Air Max 90": [air max 90, airmax 90]
+      "Air Max 97": [air max 97, airmax 97]
+
+  "Adidas":
+    aliases: [adidas, addidas, adiddas]
+    models:
+      "Yeezy 350": [yeezy 350, yeezy, yeezy boost 350]
+      "Yeezy 700": [yeezy 700]
+      "Samba": [samba, adidas samba]
+      "Gazelle": [gazelle, adidas gazelle]
+      "Ultraboost": [ultraboost, ultra boost]
+      "Forum Low": [forum low, adidas forum]
+      "Campus": [campus, adidas campus]
+
+  "New Balance":
+    aliases: [new balance, nb, newbalance]
+    models:
+      "550": [nb 550, new balance 550]
+      "2002R": [2002r, nb 2002r]
+      "990v6": [990v6, nb 990, new balance 990]
+      "530": [nb 530, new balance 530]
+      "327": [nb 327, new balance 327]
+
+  "Puma":
+    aliases: [puma]
+    models:
+      "Suede": [puma suede, suede]
+      "RS-X": [rs-x, rsx, puma rsx]
+      "Palermo": [palermo, puma palermo]
+
+  "Reebok":
+    aliases: [reebok]
+    models:
+      "Club C 85": [club c 85, club c]
+      "Classic Leather": [classic leather, reebok classic]
+
+  "Converse":
+    aliases: [converse]
+    models:
+      "Chuck Taylor": [chuck taylor, chucks, chuck 70]
+      "One Star": [one star, converse one star]
+
+  "Vans":
+    aliases: [vans]
+    models:
+      "Old Skool": [old skool, vans old skool]
+      "Sk8-Hi": [sk8 hi, sk8hi, vans sk8]
+      "Authentic": [vans authentic]

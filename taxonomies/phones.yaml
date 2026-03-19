@@ -1,0 +1,122 @@
+taxonomy:
+  id: phones
+  name: "Smartphones"
+  domain: phone
+  group_label: brand
+  item_label: model
+  reject_words:
+    - phone
+    - mobile
+    - device
+    - bhai
+    - bro
+    - please
+    - video
+    - next
+    - best
+    - love
+    - nice
+    - cool
+    - camera
+    - battery
+    - screen
+    - display
+    - black
+    - white
+    - blue
+    - red
+    - green
+    - gold
+    - silver
+    - pro
+    - max
+    - ultra
+  strip_prefixes:
+    - "new "
+    - "old "
+    - "used "
+
+entities:
+  "Samsung":
+    aliases: [samsung, samsnug, samsng]
+    models:
+      "Galaxy S24 Ultra": [s24 ultra, galaxy s24 ultra, s24ultra]
+      "Galaxy S24": [s24, galaxy s24]
+      "Galaxy S23": [s23, galaxy s23]
+      "Galaxy Z Fold 6": [z fold 6, fold 6, galaxy fold 6]
+      "Galaxy Z Flip 6": [z flip 6, flip 6, galaxy flip 6]
+      "Galaxy A55": [a55, galaxy a55]
+      "Galaxy A35": [a35, galaxy a35]
+      "Galaxy A15": [a15, galaxy a15]
+      "Galaxy M35": [m35, galaxy m35]
+
+  "Apple":
+    aliases: [apple]
+    models:
+      "iPhone 16 Pro Max": [iphone 16 pro max, 16 pro max]
+      "iPhone 16 Pro": [iphone 16 pro, 16 pro]
+      "iPhone 16": [iphone 16]
+      "iPhone 15": [iphone 15]
+      "iPhone 15 Pro": [iphone 15 pro]
+      "iPhone SE": [iphone se]
+
+  "OnePlus":
+    aliases: [oneplus, one plus, 1+]
+    models:
+      "13": [oneplus 13]
+      "12": [oneplus 12]
+      "Nord 4": [nord 4, oneplus nord 4]
+      "Nord CE 4": [nord ce 4, oneplus nord ce]
+      "Open": [oneplus open]
+
+  "Google":
+    aliases: [google, pixel]
+    models:
+      "Pixel 9 Pro": [pixel 9 pro]
+      "Pixel 9": [pixel 9]
+      "Pixel 8a": [pixel 8a]
+
+  "Xiaomi":
+    aliases: [xiaomi, mi, redmi]
+    models:
+      "14 Ultra": [xiaomi 14 ultra]
+      "14": [xiaomi 14]
+      "Redmi Note 13 Pro": [redmi note 13 pro, note 13 pro]
+      "Redmi Note 13": [redmi note 13, note 13]
+      "POCO F6": [poco f6]
+      "POCO X6": [poco x6]
+
+  "Realme":
+    aliases: [realme]
+    models:
+      "GT 6": [realme gt 6, gt 6]
+      "Narzo 70 Pro": [narzo 70 pro]
+      "12 Pro+": [realme 12 pro plus, realme 12 pro+]
+
+  "Vivo":
+    aliases: [vivo]
+    models:
+      "X200 Pro": [vivo x200 pro, x200 pro]
+      "V40": [vivo v40, v40]
+      "T3": [vivo t3]
+
+  "iQOO":
+    aliases: [iqoo]
+    models:
+      "13": [iqoo 13]
+      "Z9 Turbo": [iqoo z9 turbo, z9 turbo]
+      "Neo 9 Pro": [iqoo neo 9 pro]
+
+  "Nothing":
+    aliases: [nothing]
+    models:
+      "Phone 2a": [nothing phone 2a, phone 2a]
+      "Phone 2": [nothing phone 2, phone 2]
+      "Phone 1": [nothing phone 1, phone 1]
+
+  "Motorola":
+    aliases: [motorola, moto]
+    models:
+      "Edge 50 Pro": [moto edge 50 pro, edge 50 pro]
+      "Razr 50 Ultra": [razr 50 ultra, moto razr]
+      "G85": [moto g85]

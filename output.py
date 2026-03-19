@@ -6,49 +6,38 @@ from datetime import datetime, timezone
 
 
 def aggregate_results(extractions):
-    """Aggregate car extractions into ranked results.
-
-    Returns (rankings, brand_summary) where:
-    - rankings: list of dicts sorted by request_count descending
-    - brand_summary: list of dicts with brand-level totals
-    """
-    # Group by (brand, model)
-    car_counts = defaultdict(lambda: {"count": 0, "weighted_score": 0, "comments": []})
+    """Aggregate entity extractions into ranked results."""
+    counts = defaultdict(lambda: {"count": 0, "weighted_score": 0, "comments": []})
     brand_totals = defaultdict(int)
 
     for ext in extractions:
         brand = ext["brand"]
         model = ext["model"]
         key = (brand, model or "Unknown")
-        car_counts[key]["count"] += 1
-        car_counts[key]["weighted_score"] += 1 + ext.get("comment_like_count", 0)
-        # Keep up to 3 sample comments
-        if len(car_counts[key]["comments"]) < 3:
+        counts[key]["count"] += 1
+        counts[key]["weighted_score"] += 1 + ext.get("comment_like_count", 0)
+        if len(counts[key]["comments"]) < 3:
             comment_text = ext["source_comment"]
-            if comment_text not in car_counts[key]["comments"]:
-                car_counts[key]["comments"].append(comment_text)
+            if comment_text not in counts[key]["comments"]:
+                counts[key]["comments"].append(comment_text)
         brand_totals[brand] += 1
 
-    # Build rankings sorted by count descending
     rankings = []
     for (brand, model), data in sorted(
-        car_counts.items(), key=lambda x: x[1]["count"], reverse=True
+        counts.items(), key=lambda x: x[1]["count"], reverse=True
     ):
-        rankings.append(
-            {
-                "rank": 0,  # filled below
-                "brand": brand,
-                "model": model if model != "Unknown" else None,
-                "request_count": data["count"],
-                "weighted_score": data["weighted_score"],
-                "sample_comments": data["comments"],
-            }
-        )
+        rankings.append({
+            "rank": 0,
+            "brand": brand,
+            "model": model if model != "Unknown" else None,
+            "request_count": data["count"],
+            "weighted_score": data["weighted_score"],
+            "sample_comments": data["comments"],
+        })
 
     for i, r in enumerate(rankings):
         r["rank"] = i + 1
 
-    # Build brand summary sorted by total descending
     brand_summary = [
         {"brand": brand, "total_mentions": total}
         for brand, total in sorted(brand_totals.items(), key=lambda x: x[1], reverse=True)
@@ -58,7 +47,6 @@ def aggregate_results(extractions):
 
 
 def build_output(rankings, brand_summary, metadata):
-    """Build the full output dict matching the JSON schema."""
     return {
         "metadata": metadata,
         "rankings": rankings,
@@ -67,13 +55,12 @@ def build_output(rankings, brand_summary, metadata):
 
 
 def save_json(data, filepath=None):
-    """Save output JSON to file. Auto-generates path if none given."""
     if filepath is None:
         os.makedirs("output", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filepath = os.path.join("output", f"car_requests_{timestamp}.json")
+        taxonomy = data.get("metadata", {}).get("taxonomy", "results")
+        filepath = os.path.join("output", f"{taxonomy}_{timestamp}.json")
 
-    # Ensure parent directory exists
     parent = os.path.dirname(filepath)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -85,17 +72,20 @@ def save_json(data, filepath=None):
 
 
 def print_summary(data):
-    """Print ranked car request table to stderr."""
     handle = data["metadata"].get("account", "")
     posts = data["metadata"].get("posts_scanned", 0)
+    taxonomy_name = data["metadata"].get("taxonomy_name", "")
+    mentions_key = "entity_mentions_found"
+    mentions = data["metadata"].get(mentions_key, 0)
 
-    print(
-        f"\n=== Car Request Rankings ({handle}, last {posts} posts) ===",
-        file=sys.stderr,
-    )
+    header = f"{handle}, last {posts} posts"
+    if taxonomy_name:
+        header = f"{taxonomy_name} — {header}"
+
+    print(f"\n=== Request Rankings ({header}) ===", file=sys.stderr)
 
     if not data["rankings"]:
-        print("  No car requests found.", file=sys.stderr)
+        print("  No requests found.", file=sys.stderr)
         return
 
     for r in data["rankings"][:20]:
@@ -107,11 +97,8 @@ def print_summary(data):
             file=sys.stderr,
         )
 
-    print(f"\n  Total car mentions: {data['metadata']['car_mentions_found']}", file=sys.stderr)
-    print(
-        f"  Comments analyzed: {data['metadata']['total_comments_analyzed']}",
-        file=sys.stderr,
-    )
+    print(f"\n  Total mentions: {mentions}", file=sys.stderr)
+    print(f"  Comments analyzed: {data['metadata']['total_comments_analyzed']}", file=sys.stderr)
 
     if data["brand_summary"]:
         print("\n  Brand Summary:", file=sys.stderr)
