@@ -258,7 +258,38 @@ No YAML taxonomy needed — just pass GLiNER labels and get raw entity extractio
 }
 ```
 
+### `/extract` Response Schema
+
+```json
+{
+  "metadata": {
+    "fetched_at": "2026-03-19T14:30:22+00:00",
+    "account": "@your_account",
+    "mode": "scrape",
+    "taxonomy": null,
+    "labels": ["food item", "cuisine", "dish"],
+    "posts_scanned": 5,
+    "total_comments_analyzed": 120,
+    "entity_mentions_found": 34
+  },
+  "rankings": [
+    {
+      "rank": 1,
+      "entity": "Biryani",
+      "label": "dish",
+      "request_count": 8,
+      "weighted_score": 15,
+      "sample_comments": ["biryani recipe please", "make biryani next"]
+    }
+  ]
+}
+```
+
+Note: `/extract` returns `entity`/`label` fields (raw GLiNER output). `/analyze` returns `brand`/`model` fields (taxonomy-normalized).
+
 ## CLI Usage
+
+### With taxonomy (default — fuzzy matching + GLiNER)
 
 ```bash
 python fetch_comments.py --handle your_account --last 5
@@ -267,6 +298,24 @@ python fetch_comments.py --handle your_account --last 10 --taxonomy sneakers --b
 python fetch_comments.py --handle your_account --last 10 --item creta
 python fetch_comments.py --handle your_account --last 5 --taxonomy-file ./my_custom.yaml
 python fetch_comments.py --handle your_account --last 5 --quiet
+```
+
+### Without taxonomy (GLiNER only — zero config)
+
+Use `--labels` to skip taxonomy and extract with just GLiNER labels:
+
+```bash
+# Extract car mentions without taxonomy
+python fetch_comments.py --handle car_page --last 5 --labels "car brand,car model"
+
+# Extract food items
+python fetch_comments.py --handle food_page --last 10 --labels "food item,cuisine,dish"
+
+# Extract travel destinations
+python fetch_comments.py --handle travel_page --last 10 --labels "city,country,travel destination"
+
+# Extract anything — just describe what you're looking for
+python fetch_comments.py --handle any_page --last 5 --labels "product,brand name"
 ```
 
 ## OpenClaw Integration
