@@ -11,7 +11,7 @@ MOCK_MEDIA_RESPONSE = {
     "data": [
         {
             "id": "17918920912340654",
-            "caption": "Lofi driving vibes 🚗✨ #dreamyloopz #cars",
+            "caption": "Night drive lofi vibes 🚗✨",
             "timestamp": "2026-03-15T22:36:43+0000",
             "permalink": "https://www.instagram.com/p/DABcDeFgHiJ/",
             "media_type": "VIDEO",
@@ -149,7 +149,7 @@ def mock_api_get(url, params=None, timeout=None):
         else:
             resp.json.return_value = MOCK_COMMENTS_POST2
     elif "/me" in url:
-        resp.json.return_value = {"id": "17841405309211844", "username": "dreamy.loopz"}
+        resp.json.return_value = {"id": "17841405309211844", "username": "test_account"}
     else:
         resp.json.return_value = {"data": []}
 
@@ -164,7 +164,7 @@ def test_api_fetch():
     with patch("instagram_api.requests.get", side_effect=mock_api_get):
         from instagram_api import fetch_via_api
 
-        comments, posts_count, rate_limited = fetch_via_api("dreamy.loopz", 2)
+        comments, posts_count, rate_limited = fetch_via_api("test_account", 2)
 
     print(f"Posts fetched: {posts_count}")
     print(f"Comments fetched: {len(comments)}")
@@ -189,9 +189,10 @@ def test_api_fetch():
 
 def test_api_with_ner(comments):
     """Test that NER correctly extracts cars from API-formatted comments."""
-    from car_extractor import CarExtractor
+    from taxonomy import Taxonomy
+    from entity_extractor import EntityExtractor
 
-    extractor = CarExtractor()
+    extractor = EntityExtractor(Taxonomy("taxonomies/cars.yaml"))
     results = extractor.extract(comments)
 
     print(f"\nExtractions: {len(results)}")
@@ -222,16 +223,17 @@ def test_api_with_ner(comments):
 
 def test_full_pipeline(comments):
     """Test aggregation and output format."""
-    from car_extractor import CarExtractor
+    from taxonomy import Taxonomy
+    from entity_extractor import EntityExtractor
     from output import aggregate_results, build_output
 
-    extractor = CarExtractor()
+    extractor = EntityExtractor(Taxonomy("taxonomies/cars.yaml"))
     extractions = extractor.extract(comments)
     rankings, brand_summary = aggregate_results(extractions)
 
     metadata = {
         "fetched_at": "2026-03-19T00:00:00+00:00",
-        "account": "@dreamy.loopz",
+        "account": "@test_account",
         "mode": "api",
         "posts_scanned": 2,
         "total_comments_analyzed": len(comments),
@@ -315,7 +317,7 @@ def test_error_handling():
         import importlib
         import instagram_api
         importlib.reload(instagram_api)
-        comments, posts_count, rate_limited = instagram_api.fetch_via_api("dreamy.loopz", 2)
+        comments, posts_count, rate_limited = instagram_api.fetch_via_api("test_account", 2)
         assert rate_limited, "Should be rate limited"
         print(f"  ✓ Rate limit detected, got {len(comments)} partial comments")
 

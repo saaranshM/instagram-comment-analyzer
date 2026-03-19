@@ -17,7 +17,7 @@ def _get_credentials():
             "Error: INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_USER_ID must be set.\n"
             "\n"
             "How to get them (free):\n"
-            "  1. Convert @dreamy.loopz to a Business/Creator account (Settings > Account type)\n"
+            "  1. Convert your Instagram to a Business/Creator account (Settings > Account type)\n"
             "  2. Go to developers.facebook.com > Create App > Business type\n"
             "  3. Add 'Instagram' product to your app\n"
             "  4. Generate a token via Instagram Login flow\n"

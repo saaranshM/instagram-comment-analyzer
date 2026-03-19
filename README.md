@@ -1,215 +1,213 @@
 # Instagram Comment Analyzer
 
-Analyze Instagram comments to find the most requested cars. Built for car content creators whose followers comment requesting specific cars for future videos.
+Analyze Instagram comments to find what followers are requesting most. Supports any domain — cars, phones, sneakers, or anything custom — via simple YAML taxonomy files.
 
-Fetches comments, extracts car brand/model mentions using hybrid NER (GLiNER + fuzzy dictionary), and outputs ranked car request counts as JSON.
+Fetches comments, extracts entity mentions using hybrid NER (GLiNER + fuzzy dictionary), and outputs ranked request counts as JSON.
 
 ## How It Works
 
 ```
-Instagram Comments --> GLiNER NER + Fuzzy Dictionary --> Ranked Car Requests
+Instagram Comments --> GLiNER NER + Fuzzy Dictionary --> Ranked Entity Requests
 ```
 
 1. **Fetch** comments from Instagram (Graph API or Apify scraper)
-2. **Extract** car mentions using hybrid NER:
-   - **GLiNER** (`gliner_multi-v2.1`, multilingual) for zero-shot entity discovery
-   - **Fuzzy dictionary** (`rapidfuzz`) for misspellings, Hindi-English code-mixing, slang
+2. **Extract** entity mentions using hybrid NER:
+   - **GLiNER** (`gliner_multi-v2.1`, multilingual) — zero-shot entity discovery
+   - **Fuzzy dictionary** (`rapidfuzz`) — catches misspellings, slang, code-mixing
 3. **Aggregate** and rank by request count + like-weighted score
 4. **Output** clean JSON for downstream AI agents or manual review
 
-Handles Indian informal text: `"brezza ka video banao bhai"` --> Maruti Suzuki Brezza, `"creata plzz"` --> Hyundai Creta, `"marutisuzki swift"` --> Maruti Suzuki Swift.
+### Example: Car Requests
+
+The bundled `cars` taxonomy handles Indian informal text out of the box:
+
+- `"brezza ka video banao bhai"` --> Maruti Suzuki Brezza
+- `"creata plzz"` --> Hyundai Creta
+- `"marutisuzki swift"` --> Maruti Suzuki Swift
+
+```
+=== Request Rankings (Cars & Vehicles — @your_account, last 20 posts) ===
+  #1   Maruti Suzuki Baleno             8 requests  (score: 18)
+  #2   Maruti Suzuki Dzire              6 requests  (score: 16)
+  #3   Mahindra Scorpio                 5 requests  (score: 98)
+  #4   Maruti Suzuki Brezza             5 requests  (score: 12)
+```
 
 ## Quick Start
 
 ### Docker (Recommended)
 
-The GLiNER model (~1.1GB) is bundled in the repo via Git LFS. No external downloads needed.
-
 ```bash
 git clone <repo-url>
 cd instagram-comment-analyzer
 
-# Configure credentials
 cp .env.example .env
 # Edit .env — set INSTAGRAM_HANDLE and at least one auth method
 
-# Build and run the server
 docker build -t instagram-analyzer .
-docker run -d --name ig-analyzer --env-file .env -p 8000:8000 instagram-analyzer
+docker run -d --name analyzer --env-file .env -p 8000:8000 instagram-analyzer
 
-# Test
-curl http://localhost:8000/health
+# Analyze car requests (default taxonomy)
 curl "http://localhost:8000/analyze?last=5&handle=your_account"
+
+# Analyze phone requests
+curl "http://localhost:8000/analyze?last=5&handle=your_account&taxonomy=phones"
+
+# What should I generate next?
+curl "http://localhost:8000/top?last=10&handle=your_account"
 ```
 
 ### Local Development
 
 ```bash
-git clone <repo-url>
-cd instagram-comment-analyzer
-
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env
-# Edit .env
+cp .env.example .env   # edit with your credentials
 
-# CLI mode
+# CLI
 python fetch_comments.py --handle your_account --last 5
+python fetch_comments.py --handle your_account --last 10 --taxonomy phones
 
-# Server mode (model loads once, handles requests instantly)
+# Server (model loads once, requests are instant)
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
+## Taxonomies
+
+A taxonomy is a YAML file that defines what entities to look for. Drop it in `taxonomies/` and it's available immediately.
+
+### Bundled Taxonomies
+
+| ID | Name | Brands | Models | Example |
+|----|------|--------|--------|---------|
+| `cars` | Cars & Vehicles | 26 | 151 | Maruti Suzuki Baleno, Hyundai Creta |
+| `phones` | Smartphones | 10 | 44 | Samsung Galaxy S24, iPhone 16 Pro |
+| `sneakers` | Sneakers & Shoes | 7 | 31 | Nike Air Jordan 1, Adidas Yeezy 350 |
+
+### Creating a Custom Taxonomy
+
+Create a YAML file in `taxonomies/`:
+
+```yaml
+# taxonomies/your_domain.yaml
+taxonomy:
+  id: your_domain
+  name: "Your Domain Name"
+  domain: widget              # auto-derives GLiNER labels: "widget brand", "widget model"
+  group_label: brand          # what top-level groups are called
+  item_label: model           # what sub-items are called
+  reject_words: [common, words, to, ignore, in, this, domain]
+  strip_prefixes: ["new ", "old "]
+
+  # Optional: override auto-derived GLiNER labels
+  # gliner_labels: ["custom label 1", "custom label 2"]
+
+entities:
+  "Brand A":
+    aliases: [branda, brand-a, brnd_a]     # misspellings/variations
+    models:
+      "Product 1": [prod1, product-1, p1]
+      "Product 2": [prod2, product-2]
+
+  "Brand B":
+    aliases: [brandb]
+    models:
+      "Item X": [itemx, item-x]
+```
+
+Then reload: `curl -X POST localhost:8000/reload`
+
+The GLiNER labels are auto-derived from `domain` + `group_label` + `item_label` (e.g., `"widget brand"`, `"widget model"`, `"widget"`). Override with `gliner_labels` if you need custom phrasing.
+
 ## Authentication
 
-Two data fetching modes. Auto-detects: if Instagram API credentials exist, they're preferred; otherwise Apify is used.
+Two data fetching modes. Auto-detects: if Instagram API credentials exist, they're preferred.
 
 ### Option 1: Instagram Graph API (Recommended)
 
-Free, 200 calls/hour, no ban risk. Requires the Instagram account owner to generate a token.
+Free, 200 calls/hour, no ban risk. Requires the account owner to generate a token.
 
-**Setup (~5 minutes):**
-
-1. Convert the Instagram account to **Business** or **Creator** (Settings > Account type)
-2. Go to [developers.facebook.com](https://developers.facebook.com) > Create App > Business type
-3. Add the **Instagram** product to your app
-4. Go to [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
-5. Select your app, click **Generate Access Token**, log in with Instagram
-6. Exchange for a long-lived token (60 days):
+1. Convert account to **Business/Creator** (Settings > Account type)
+2. [developers.facebook.com](https://developers.facebook.com) > Create App > Add Instagram product
+3. Generate token via [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
+4. Exchange for long-lived token (60 days):
    ```bash
-   curl "https://graph.instagram.com/access_token\
-   ?grant_type=ig_exchange_token\
-   &client_secret=YOUR_APP_SECRET\
-   &access_token=SHORT_LIVED_TOKEN"
+   curl "https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=APP_SECRET&access_token=SHORT_TOKEN"
    ```
-7. Get your user ID:
+5. Get user ID:
    ```bash
-   curl "https://graph.instagram.com/me?fields=id,username&access_token=YOUR_TOKEN"
+   curl "https://graph.instagram.com/me?fields=id,username&access_token=TOKEN"
    ```
-8. Add to `.env`:
+6. Add to `.env`:
    ```
    INSTAGRAM_ACCESS_TOKEN=your_long_lived_token
    INSTAGRAM_USER_ID=your_user_id
    ```
 
-**Token refresh** (run every ~50 days before the 60-day expiry):
-```bash
-curl "https://graph.instagram.com/refresh_access_token\
-?grant_type=ig_refresh_token\
-&access_token=CURRENT_TOKEN"
-```
-
-**Permissions needed:** `instagram_basic` + `instagram_manage_comments`
+Refresh every ~50 days: `curl "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=TOKEN"`
 
 ### Option 2: Apify Scraper (No Login)
 
-Free tier ($5/month credits, no credit card required). Works on any public profile without an Instagram account.
+Free tier, works on any public profile.
 
 1. Sign up at [apify.com](https://apify.com) (free)
-2. Get your API token from Settings > Integrations
-3. Add to `.env`:
+2. Add to `.env`:
    ```
-   APIFY_API_TOKEN=apify_api_XXXXXXXXXXXXXXXXXXXXX
+   APIFY_API_TOKEN=apify_api_XXXXX
    ```
 
 ## API Reference
-
-The server loads the GLiNER model once at startup (~3s). Subsequent requests are instant.
 
 ### Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Server status check |
-| `GET` | `/brands` | List all supported car brands and models |
-| `GET` | `/top` | Single most requested car (for automation) |
+| `GET` | `/health` | Server status + loaded taxonomies |
+| `GET` | `/taxonomies` | List all taxonomies with metadata |
+| `GET` | `/brands?taxonomy=cars` | List groups/items for a taxonomy |
+| `GET` | `/top` | Single most requested entity (for automation) |
 | `GET` | `/analyze` | Full ranked analysis |
 | `POST` | `/analyze` | Full ranked analysis (JSON body) |
+| `POST` | `/reload` | Reload taxonomies from disk |
 | `GET` | `/docs` | Interactive Swagger UI |
 
-### `GET /analyze`
-
-```bash
-# Basic usage
-curl "http://localhost:8000/analyze?last=5&handle=your_account"
-
-# Filter by brand
-curl "http://localhost:8000/analyze?last=10&handle=your_account&brand=hyundai"
-
-# Filter by car model
-curl "http://localhost:8000/analyze?last=10&handle=your_account&car=creta"
-
-# Pre-filter comments containing specific text
-curl "http://localhost:8000/analyze?last=10&handle=your_account&text=please"
-
-# Only results with weighted score >= 10
-curl "http://localhost:8000/analyze?last=20&handle=your_account&min_score=10"
-
-# Top 5 results only
-curl "http://localhost:8000/analyze?last=20&handle=your_account&top_n=5"
-
-# Force specific fetch mode
-curl "http://localhost:8000/analyze?last=5&handle=your_account&mode=scrape"
-```
+### Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `last` | int | **required** | Number of recent posts to analyze |
-| `handle` | string | from `INSTAGRAM_HANDLE` env | Instagram handle to analyze |
-| `mode` | string | auto-detect | `api` (Graph API) or `scrape` (Apify) |
-| `brand` | string | -- | Filter results to this brand |
-| `car` | string | -- | Filter results to this car model |
+| `handle` | string | from env | Instagram handle |
+| `taxonomy` | string | `cars` | Taxonomy to use (cars, phones, sneakers, custom) |
+| `mode` | string | auto | `api` or `scrape` |
+| `brand` | string | -- | Filter by brand/group |
+| `item` | string | -- | Filter by item/model |
 | `text` | string | -- | Pre-filter comments containing this text |
-| `min_score` | int | -- | Minimum weighted score to include |
+| `min_score` | int | -- | Minimum weighted score |
 | `top_n` | int | -- | Limit to top N results |
 
-### `POST /analyze`
+### Examples
 
 ```bash
-curl -X POST http://localhost:8000/analyze \
+# Car requests (default)
+curl "localhost:8000/analyze?last=10&handle=car_page"
+
+# Phone requests
+curl "localhost:8000/analyze?last=10&handle=tech_reviewer&taxonomy=phones"
+
+# Sneaker requests filtered by Nike
+curl "localhost:8000/analyze?last=10&handle=sneaker_page&taxonomy=sneakers&brand=nike"
+
+# Top requested item across any taxonomy
+curl "localhost:8000/top?last=20&handle=your_account&taxonomy=phones"
+
+# POST with full options
+curl -X POST localhost:8000/analyze \
   -H "Content-Type: application/json" \
-  -d '{
-    "last": 20,
-    "handle": "your_account",
-    "brand": "maruti",
-    "top_n": 5
-  }'
-```
-
-### `GET /top`
-
-Returns only the single most requested car. Designed for automation and AI agents.
-
-```bash
-curl "http://localhost:8000/top?last=10&handle=your_account"
-```
-
-```json
-{
-  "car": "Maruti Suzuki Baleno",
-  "brand": "Maruti Suzuki",
-  "model": "Baleno",
-  "request_count": 8,
-  "weighted_score": 18,
-  "sample_comments": [
-    "Please bro baleno video",
-    "New baleno",
-    "New age baleno please"
-  ]
-}
-```
-
-### `GET /brands`
-
-```bash
-curl http://localhost:8000/brands
+  -d '{"last": 20, "handle": "your_account", "taxonomy": "cars", "top_n": 5}'
 ```
 
 ### Response Schema
-
-All analysis endpoints return:
 
 ```json
 {
@@ -217,10 +215,12 @@ All analysis endpoints return:
     "fetched_at": "2026-03-19T14:30:22+00:00",
     "account": "@your_account",
     "mode": "api",
+    "taxonomy": "cars",
+    "taxonomy_name": "Cars & Vehicles",
     "posts_scanned": 10,
     "total_comments_analyzed": 247,
-    "car_mentions_found": 89,
-    "filters_applied": { "brand": null, "car": null, "text": null, "min_score": null, "top_n": null }
+    "entity_mentions_found": 89,
+    "filters_applied": { "brand": null, "item": null, "text": null }
   },
   "rankings": [
     {
@@ -233,164 +233,88 @@ All analysis endpoints return:
     }
   ],
   "brand_summary": [
-    { "brand": "Hyundai", "total_mentions": 28 },
-    { "brand": "Maruti Suzuki", "total_mentions": 22 }
+    { "brand": "Hyundai", "total_mentions": 28 }
   ]
 }
 ```
-
-- **`weighted_score`** = `request_count` + sum of `like_count` on those comments
-- **`sample_comments`** = up to 3 raw comments per car
 
 ## CLI Usage
 
 ```bash
 python fetch_comments.py --handle your_account --last 5
-python fetch_comments.py --handle your_account --last 10 --brand hyundai
-python fetch_comments.py --handle your_account --last 10 --car creta
+python fetch_comments.py --handle your_account --last 10 --taxonomy phones
+python fetch_comments.py --handle your_account --last 10 --taxonomy sneakers --brand nike
+python fetch_comments.py --handle your_account --last 10 --item creta
+python fetch_comments.py --handle your_account --last 5 --taxonomy-file ./my_custom.yaml
 python fetch_comments.py --handle your_account --last 5 --quiet
-python fetch_comments.py --handle your_account --last 5 --output results.json
-python fetch_comments.py --handle your_account --last 5 --mode api
 ```
-
-Exit codes: `0` success, `1` fatal error, `2` partial results (rate limited).
 
 ## OpenClaw Integration
 
-An OpenClaw skill is included at `skills/car-request-analyzer/`. It lets your OpenClaw agent analyze Instagram car requests via natural language.
+An OpenClaw skill is included at `skills/entity-analyzer/`.
 
-### Setup
+```bash
+# Copy skill to OpenClaw
+cp -r skills/entity-analyzer ~/.openclaw/skills/
 
-1. Start the analyzer server:
-   ```bash
-   docker run -d --env-file .env -p 8000:8000 instagram-analyzer
-   ```
+# Set server URL
+export IG_ANALYZER_URL=http://localhost:8000
+```
 
-2. Copy the skill into your OpenClaw skills directory:
-   ```bash
-   cp -r skills/car-request-analyzer ~/.openclaw/skills/
-   ```
+Configure in `~/.openclaw/openclaw.json`:
+```json
+{
+  "skills": {
+    "entries": {
+      "entity-analyzer": {
+        "enabled": true,
+        "env": { "IG_ANALYZER_URL": "http://localhost:8000" }
+      }
+    }
+  }
+}
+```
 
-3. Set the environment variable:
-   ```bash
-   # In your shell or ~/.openclaw/openclaw.json
-   export IG_ANALYZER_URL=http://localhost:8000
-   ```
+Then ask naturally: *"What car should I make next?"*, *"Show me phone request rankings"*, *"What sneakers are trending?"*
 
-4. Configure in `~/.openclaw/openclaw.json` (optional):
-   ```json
-   {
-     "skills": {
-       "entries": {
-         "car-request-analyzer": {
-           "enabled": true,
-           "env": {
-             "IG_ANALYZER_URL": "http://localhost:8000"
-           }
-         }
-       }
-     }
-   }
-   ```
-
-### Usage with OpenClaw
-
-Once installed, talk to your OpenClaw agent naturally:
-
-- *"What car should I make a video about next?"*
-- *"Show me the top 10 car requests"*
-- *"How many people are asking for Hyundai cars?"*
-- *"What's trending on my Instagram?"*
-- *"Analyze the last 50 posts for car requests"*
-
-The skill instructs OpenClaw to call the analyzer API and present the results.
-
-### Integration with Other AI Frameworks
-
-#### LangChain
+### LangChain
 
 ```python
 from langchain.tools import tool
 import requests
 
-ANALYZER_URL = "http://localhost:8000"
-
 @tool
-def get_most_requested_car(handle: str, last_n_posts: int = 10) -> str:
-    """Get the most requested car from Instagram comments.
-    Returns the car name that followers are requesting the most."""
-    resp = requests.get(f"{ANALYZER_URL}/top", params={"last": last_n_posts, "handle": handle})
+def get_top_request(handle: str, taxonomy: str = "cars", last_n: int = 10) -> str:
+    """Get the most requested entity from Instagram comments."""
+    resp = requests.get("http://localhost:8000/top",
+                        params={"last": last_n, "handle": handle, "taxonomy": taxonomy})
     data = resp.json()
-    if data.get("car"):
-        return f"{data['car']} ({data['request_count']} requests). Comments: {data['sample_comments']}"
-    return "No car requests found"
-
-@tool
-def get_car_rankings(handle: str, last_n_posts: int = 10, brand: str = None, top_n: int = 5) -> str:
-    """Get ranked list of car requests from Instagram comments.
-    Optionally filter by brand (e.g. 'hyundai', 'tata', 'maruti')."""
-    params = {"last": last_n_posts, "handle": handle, "top_n": top_n}
-    if brand:
-        params["brand"] = brand
-    resp = requests.get(f"{ANALYZER_URL}/analyze", params=params)
-    rankings = resp.json()["rankings"]
-    lines = [f"#{r['rank']} {r['brand']} {r['model'] or ''}: {r['request_count']} requests" for r in rankings]
-    return "\n".join(lines) or "No car requests found"
+    if data.get("result"):
+        return f"{data['result']} ({data['request_count']} requests). Comments: {data['sample_comments']}"
+    return "No requests found"
 ```
 
-#### CrewAI
-
-```python
-from crewai_tools import tool
-import requests
-
-@tool("Instagram Car Request Analyzer")
-def analyze_car_requests(handle: str, last_n_posts: int = 10) -> str:
-    """Analyzes Instagram comments to find which cars followers are requesting."""
-    resp = requests.get(f"http://localhost:8000/top", params={"last": last_n_posts, "handle": handle})
-    data = resp.json()
-    if not data.get("car"):
-        return "No car requests found."
-    return f"Most requested: {data['car']} ({data['request_count']} requests). Comments: {data['sample_comments']}"
-```
-
-#### Raw HTTP (Any Framework)
+### Raw HTTP
 
 ```bash
-# What should I generate next?
-curl -s "http://localhost:8000/top?last=20&handle=your_account" | jq '.car'
-
-# Full rankings
-curl -s "http://localhost:8000/analyze?last=20&handle=your_account&top_n=5" \
-  | jq '.rankings[] | {car: (.brand + " " + (.model // "")), requests: .request_count}'
+curl -s "localhost:8000/top?last=20&handle=your_account" | jq '.result'
 ```
-
-## Supported Cars
-
-~120 models across 25+ brands focused on the Indian market:
-
-**Mass market:** Maruti Suzuki, Hyundai, Tata, Mahindra, Kia, Honda, Toyota, Ford, Chevrolet, Renault, Nissan, Citroen, BYD
-
-**Luxury:** BMW, Mercedes-Benz, Audi, Porsche, Land Rover, Lamborghini, Ferrari, Rolls-Royce
-
-**Others:** MG, Skoda, Volkswagen, Jeep, Royal Enfield
-
-The fuzzy dictionary handles misspellings and Hindi-English code-mixing. New cars can be added by editing `car_dictionary.py`.
 
 ## Architecture
 
 ```
+taxonomy.py            Taxonomy loading + registry (YAML/JSON)
+entity_extractor.py    Hybrid NER: GLiNER + fuzzy dictionary (domain-agnostic)
+taxonomies/            YAML taxonomy files (cars, phones, sneakers, custom)
+server.py              FastAPI server (multi-taxonomy, model loaded once)
 fetch_comments.py      CLI entry point
-server.py              FastAPI server (model loaded once at startup)
 instagram_api.py       Instagram Graph API client (v24.0)
 apify_scraper.py       Apify scraper client
-car_extractor.py       Hybrid NER: GLiNER + fuzzy dictionary
-car_dictionary.py      Curated car brands/models with aliases
 filters.py             Pre/post comment filtering
 output.py              JSON aggregation + console summary
 models/                Bundled GLiNER model (Git LFS)
-skills/                OpenClaw skill definition
-test_api.py            Integration tests with mocked API responses
+skills/                OpenClaw skill
+test_api.py            Integration tests
 ```
 
 ## Tests
@@ -398,9 +322,3 @@ test_api.py            Integration tests with mocked API responses
 ```bash
 python test_api.py
 ```
-
-Runs 4 test suites against mocked Instagram Graph API v24.0 responses:
-1. API response parsing
-2. NER extraction accuracy
-3. Full pipeline (fetch -> extract -> aggregate -> JSON)
-4. Error handling (expired token, rate limits)
