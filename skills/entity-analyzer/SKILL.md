@@ -1,6 +1,6 @@
 ---
 name: entity-analyzer
-description: Analyze Instagram comments to find the most requested entities (cars, phones, sneakers, etc.) using configurable taxonomies and hybrid NER.
+description: Analyze Instagram comments to find the most requested items — cars, phones, sneakers, or any custom domain. Extracts entity mentions using hybrid NER and returns ranked results.
 version: 2.0.0
 user-invocable: true
 metadata:
@@ -18,131 +18,129 @@ metadata:
 
 # Entity Analyzer
 
-Analyze Instagram comments to find what followers are requesting most. Supports any domain via configurable taxonomies — cars, phones, sneakers, or custom.
-
-The analyzer server runs a hybrid NER pipeline (GLiNER + fuzzy dictionary) that extracts entity mentions from comments and ranks them by request count.
+Analyze Instagram comments to find what followers are requesting most. Works with any domain — cars, phones, sneakers, or custom taxonomies.
 
 ## Prerequisites
 
-The analyzer server must be running. Set `IG_ANALYZER_URL` to the server address (e.g., `http://localhost:8000`).
+The analyzer server must be running at `$IG_ANALYZER_URL` (e.g., `http://localhost:8000`).
 
-## Primary Use Case: Car Requests
+## Understanding User Intent
 
-The default taxonomy is `cars` — optimized for Indian car content creators whose followers request specific cars in comments.
+When the user mentions a domain, map it to the right taxonomy parameter:
 
-### What car should I generate next?
+| User says | taxonomy= |
+|-----------|-----------|
+| "cars", "vehicles", "car requests" | `cars` |
+| "phones", "smartphones", "mobile" | `phones` |
+| "sneakers", "shoes", "kicks" | `sneakers` |
+| anything else | Check available taxonomies first |
 
-When the user asks what to make next, which car is trending, or what video to create:
+If the user doesn't specify a domain, first check what taxonomies are available:
+```
+curl -s "$IG_ANALYZER_URL/taxonomies" | jq '.taxonomies[].id'
+```
+Then ask which one they want, or default to `cars` if context suggests it.
+
+Extract the Instagram handle from the user's message. If they say "my account" or "my page", use the handle configured in the server's INSTAGRAM_HANDLE env var (omit the `handle` param).
+
+## Commands
+
+### "Get me the top [item] from my last [N] posts"
+
+Examples:
+- "Get me the top car from my last 5 posts"
+- "What phone are people requesting most from last 10 posts?"
+- "Top sneaker from my last 20 posts"
 
 ```
-curl -s "$IG_ANALYZER_URL/top?last=20&handle=HANDLE" | jq '.'
+curl -s "$IG_ANALYZER_URL/top?last=N&handle=HANDLE&taxonomy=TAXONOMY" | jq '.'
 ```
 
-Example response:
-```json
-{
-  "result": "Maruti Suzuki Baleno",
-  "brand": "Maruti Suzuki",
-  "model": "Baleno",
-  "request_count": 8,
-  "weighted_score": 18,
-  "sample_comments": ["Please bro baleno video", "New baleno", "New age baleno please"]
-}
-```
+Present: the item name, request count, weighted score, and sample comments.
 
-Present the result: car name, request count, and sample comments showing how followers phrase their requests.
+### "Show me rankings" / "What are people asking for?"
 
-### Show me car request rankings
+Examples:
+- "Show me car request rankings from last 20 posts"
+- "What phones are people asking for?"
+- "Rank the sneaker requests"
 
 ```
-curl -s "$IG_ANALYZER_URL/analyze?last=20&handle=HANDLE&top_n=10" | jq '.'
+curl -s "$IG_ANALYZER_URL/analyze?last=N&handle=HANDLE&taxonomy=TAXONOMY&top_n=10" | jq '.'
 ```
 
-Format the rankings as a readable table: rank, car name, request count, score.
+Format as a readable table: rank, name, request count, score.
 
-### Filter by brand
+### "Filter by brand"
 
-When the user asks about a specific brand (e.g., "what Hyundai cars are people asking for?"):
-
-```
-curl -s "$IG_ANALYZER_URL/analyze?last=20&handle=HANDLE&brand=hyundai" | jq '.'
-```
-
-### Filter by car model
-
-When the user asks about a specific car (e.g., "how many people want Creta?"):
+Examples:
+- "What Hyundai cars are people asking for?"
+- "Show me Samsung phone requests"
+- "How many Nike sneaker requests?"
 
 ```
-curl -s "$IG_ANALYZER_URL/analyze?last=20&handle=HANDLE&item=creta" | jq '.'
+curl -s "$IG_ANALYZER_URL/analyze?last=N&handle=HANDLE&taxonomy=TAXONOMY&brand=BRAND" | jq '.'
 ```
 
-## Using Other Taxonomies
+### "Filter by specific item"
 
-The analyzer supports multiple domains. To use a different taxonomy, add `&taxonomy=TAXONOMY_ID`.
+Examples:
+- "How many people want Creta?"
+- "Is anyone asking for iPhone 16?"
+- "How popular are Air Jordans?"
 
-### List available taxonomies
+```
+curl -s "$IG_ANALYZER_URL/analyze?last=N&handle=HANDLE&taxonomy=TAXONOMY&item=ITEM" | jq '.'
+```
+
+### "What taxonomies are available?"
 
 ```
 curl -s "$IG_ANALYZER_URL/taxonomies" | jq '.'
 ```
 
-### Analyze with a specific taxonomy
-
-For phones:
-```
-curl -s "$IG_ANALYZER_URL/analyze?last=10&handle=HANDLE&taxonomy=phones" | jq '.'
-```
-
-For sneakers:
-```
-curl -s "$IG_ANALYZER_URL/analyze?last=10&handle=HANDLE&taxonomy=sneakers" | jq '.'
-```
-
-### Top requested entity in any domain
+### "What brands/items does [taxonomy] support?"
 
 ```
-curl -s "$IG_ANALYZER_URL/top?last=10&handle=HANDLE&taxonomy=phones" | jq '.'
+curl -s "$IG_ANALYZER_URL/brands?taxonomy=TAXONOMY" | jq '.'
 ```
 
-### List brands/groups for a taxonomy
+### "Analyze a different account"
+
+When the user specifies a different handle (strip `@` if present):
 
 ```
-curl -s "$IG_ANALYZER_URL/brands?taxonomy=phones" | jq '.'
+curl -s "$IG_ANALYZER_URL/analyze?last=N&handle=OTHER_HANDLE&taxonomy=TAXONOMY" | jq '.'
 ```
 
-## API Parameters Reference
+## Parameter Reference
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `last` | int | Number of recent posts to analyze (required) |
-| `handle` | string | Instagram handle to analyze |
-| `taxonomy` | string | Taxonomy to use: cars (default), phones, sneakers, or custom |
+| `handle` | string | Instagram handle (omit to use server default) |
+| `taxonomy` | string | Domain: cars, phones, sneakers, or custom |
 | `brand` | string | Filter to specific brand/group |
 | `item` | string | Filter to specific item/model |
 | `text` | string | Pre-filter comments containing this text |
 | `min_score` | int | Minimum weighted score to include |
 | `top_n` | int | Limit to top N results |
-| `mode` | string | `api` (Graph API) or `scrape` (Apify) |
 
 ## Automation Workflow
 
-For automated video/content generation pipelines:
-
-1. Call `GET $IG_ANALYZER_URL/top?last=20&handle=HANDLE` to find the most requested entity.
+1. Call `/top?last=20&handle=HANDLE&taxonomy=TAXONOMY` to find the most requested item.
 2. Use the `result` field as input for content generation.
-3. The `sample_comments` show how followers phrase requests — useful for titles/captions.
-4. After posting, call again to find the next most requested entity.
+3. `sample_comments` shows how followers phrase requests — useful for titles/captions.
+4. After posting, call again for the next most requested item.
 
-## Server Health
+## Server Management
 
+Health check:
 ```
 curl -s "$IG_ANALYZER_URL/health" | jq '.'
 ```
 
-## Reload Taxonomies
-
-After adding or editing a taxonomy YAML file:
-
+Reload taxonomies after adding/editing YAML files:
 ```
 curl -s -X POST "$IG_ANALYZER_URL/reload" | jq '.'
 ```
@@ -151,5 +149,6 @@ curl -s -X POST "$IG_ANALYZER_URL/reload" | jq '.'
 
 - Never fabricate request counts or rankings — always call the API.
 - If the server is unreachable, tell the user to check if the Docker container is running.
-- Do not cache results for more than a few minutes — comment data changes frequently.
+- Do not cache results — comment data changes frequently.
 - Present exact numbers from the API, do not round or estimate.
+- If the user asks for a taxonomy that doesn't exist, list available ones and suggest creating a custom YAML.
