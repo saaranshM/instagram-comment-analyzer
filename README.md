@@ -167,8 +167,8 @@ Free tier, works on any public profile.
 | `GET` | `/taxonomies` | List all taxonomies with metadata |
 | `GET` | `/brands?taxonomy=cars` | List groups/items for a taxonomy |
 | `GET` | `/top` | Single most requested entity (for automation) |
-| `GET` | `/analyze` | Full ranked analysis |
-| `POST` | `/analyze` | Full ranked analysis (JSON body) |
+| `GET/POST` | `/analyze` | Full ranked analysis (with taxonomy) |
+| `GET/POST` | `/extract` | Taxonomy-free extraction (just GLiNER labels) |
 | `POST` | `/reload` | Reload taxonomies from disk |
 | `GET` | `/docs` | Interactive Swagger UI |
 
@@ -205,7 +205,27 @@ curl "localhost:8000/top?last=20&handle=your_account&taxonomy=phones"
 curl -X POST localhost:8000/analyze \
   -H "Content-Type: application/json" \
   -d '{"last": 20, "handle": "your_account", "taxonomy": "cars", "top_n": 5}'
+
+# === Taxonomy-free mode (no YAML needed, just GLiNER labels) ===
+
+# Extract with custom labels — zero config
+curl "localhost:8000/extract?last=5&handle=food_page&labels=food%20item,cuisine,dish"
+
+# POST with label array
+curl -X POST localhost:8000/extract \
+  -H "Content-Type: application/json" \
+  -d '{"last": 10, "handle": "travel_page", "labels": ["city", "country", "travel destination"]}'
 ```
+
+### Taxonomy-free mode (`/extract`)
+
+No YAML taxonomy needed — just pass GLiNER labels and get raw entity extraction. Useful for quick exploration or domains where you don't have a curated dictionary.
+
+**Tradeoffs vs `/analyze` with taxonomy:**
+- No fuzzy matching (misspellings won't be corrected)
+- No canonical normalization (raw text as-is)
+- No reject words (more false positives)
+- Works instantly for any domain without config
 
 ### Response Schema
 

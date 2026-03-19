@@ -12,7 +12,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from taxonomy import TaxonomyRegistry
-from entity_extractor import EntityExtractor
+from entity_extractor import EntityExtractor, RawExtractor
 from filters import filter_comments, filter_results
 from output import aggregate_results, build_output
 
@@ -45,6 +45,15 @@ class AnalyzeRequest(BaseModel):
     car: Optional[str] = None  # backward compat alias for item
     text: Optional[str] = None
     min_score: Optional[int] = None
+    top_n: Optional[int] = None
+
+
+class ExtractRequest(BaseModel):
+    last: int
+    handle: str = ""
+    mode: Optional[str] = None
+    labels: list[str]
+    text: Optional[str] = None
     top_n: Optional[int] = None
 
 
@@ -217,6 +226,107 @@ def _run_analysis(req: AnalyzeRequest):
         data["warning"] = "Rate limited — results may be partial"
 
     return data
+
+
+def _run_extraction(req: ExtractRequest):
+    """Taxonomy-free extraction using only GLiNER with user-provided labels."""
+    handle = _resolve_handle(req.handle)
+    mode = _detect_mode(req.mode)
+
+    # Fetch comments
+    rate_limited = False
+    if mode == "api":
+        from instagram_api import fetch_via_api
+        comments, posts_count, rate_limited = fetch_via_api(handle, req.last)
+    else:
+        from apify_scraper import fetch_via_apify
+        comments, posts_count = fetch_via_apify(handle, req.last)
+
+    if not comments:
+        raise HTTPException(status_code=404, detail="No comments found")
+
+    comments = filter_comments(comments, text=req.text)
+    if not comments:
+        raise HTTPException(status_code=404, detail="No comments matched the text filter")
+
+    # Extract with GLiNER only — no taxonomy needed
+    raw = RawExtractor(req.labels)
+    extractions = raw.extract(comments)
+
+    # Aggregate by entity text
+    from collections import defaultdict
+    counts = defaultdict(lambda: {"count": 0, "weighted_score": 0, "comments": [], "label": ""})
+    for ext in extractions:
+        key = ext["entity"]
+        counts[key]["count"] += 1
+        counts[key]["weighted_score"] += 1 + ext.get("comment_like_count", 0)
+        counts[key]["label"] = ext["label"]
+        if len(counts[key]["comments"]) < 3:
+            c = ext["source_comment"]
+            if c not in counts[key]["comments"]:
+                counts[key]["comments"].append(c)
+
+    rankings = sorted(
+        [{"rank": 0, "entity": k, "label": v["label"], "request_count": v["count"],
+          "weighted_score": v["weighted_score"], "sample_comments": v["comments"]}
+         for k, v in counts.items()],
+        key=lambda x: x["request_count"], reverse=True,
+    )
+    for i, r in enumerate(rankings):
+        r["rank"] = i + 1
+
+    if req.top_n:
+        rankings = rankings[:req.top_n]
+
+    data = {
+        "metadata": {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "account": f"@{handle}",
+            "mode": mode,
+            "taxonomy": None,
+            "labels": req.labels,
+            "posts_scanned": posts_count,
+            "total_comments_analyzed": len(comments),
+            "entity_mentions_found": len(extractions),
+        },
+        "rankings": rankings,
+    }
+
+    if rate_limited:
+        data["warning"] = "Rate limited — results may be partial"
+
+    return data
+
+
+@app.post("/extract")
+def extract_post(req: ExtractRequest):
+    """Taxonomy-free extraction. Provide GLiNER labels, get raw entity rankings.
+
+    No taxonomy file needed — just pass labels like ["car brand", "car model"]
+    or ["phone brand", "smartphone"] and GLiNER extracts entities zero-shot.
+    """
+    return _run_extraction(req)
+
+
+@app.get("/extract")
+def extract_get(
+    last: int,
+    labels: str,
+    handle: str = "",
+    mode: Optional[str] = None,
+    text: Optional[str] = None,
+    top_n: Optional[int] = None,
+):
+    """Taxonomy-free extraction via GET. Labels as comma-separated string.
+
+    Example: /extract?last=5&handle=mypage&labels=car brand,car model
+    """
+    label_list = [l.strip() for l in labels.split(",") if l.strip()]
+    if not label_list:
+        raise HTTPException(status_code=400, detail="'labels' must be a non-empty comma-separated string")
+    return _run_extraction(ExtractRequest(
+        last=last, handle=handle, mode=mode, labels=label_list, text=text, top_n=top_n,
+    ))
 
 
 @app.post("/analyze")

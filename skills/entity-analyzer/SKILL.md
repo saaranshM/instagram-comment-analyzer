@@ -105,6 +105,31 @@ curl -s "$IG_ANALYZER_URL/taxonomies" | jq '.'
 curl -s "$IG_ANALYZER_URL/brands?taxonomy=TAXONOMY" | jq '.'
 ```
 
+### "Just find [something] in the comments" (no taxonomy)
+
+When the user wants to extract entities without a predefined taxonomy — just raw GLiNER zero-shot extraction. Use `/extract` instead of `/analyze`.
+
+Examples:
+- "Find any food items mentioned in the last 5 posts"
+- "What cities are people mentioning?"
+- "Extract any product names from comments"
+
+Via GET (labels as comma-separated):
+```
+curl -s "$IG_ANALYZER_URL/extract?last=N&handle=HANDLE&labels=food%20item,cuisine,dish" | jq '.'
+```
+
+Via POST (labels as array):
+```
+curl -s -X POST "$IG_ANALYZER_URL/extract" \
+  -H "Content-Type: application/json" \
+  -d '{"last": N, "handle": "HANDLE", "labels": ["city", "country", "travel destination"]}' | jq '.'
+```
+
+The response has `entity` and `label` fields instead of `brand`/`model` since there's no taxonomy structure. Results are raw GLiNER output — no fuzzy matching or normalization.
+
+If results seem noisy, suggest the user create a taxonomy YAML for better accuracy.
+
 ### "Analyze a different account"
 
 When the user specifies a different handle (strip `@` if present):

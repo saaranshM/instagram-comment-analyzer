@@ -140,3 +140,46 @@ class EntityExtractor:
                 })
 
         return results
+
+
+class RawExtractor:
+    """GLiNER-only extractor — no taxonomy needed.
+
+    Extracts entities using only zero-shot NER with user-provided labels.
+    No fuzzy dictionary, no normalization, no reject words.
+    Use when you want quick extraction without defining a taxonomy.
+    """
+
+    def __init__(self, labels):
+        self.model = EntityExtractor._load_model()
+        self.labels = labels
+
+    def extract(self, comments):
+        results = []
+        total = len(comments)
+        for i, comment in enumerate(comments):
+            if (i + 1) % 50 == 0 or i == 0:
+                print(f"  Analyzing comment {i + 1}/{total}...", file=sys.stderr)
+            text = comment.get("text", "")
+            if not text:
+                continue
+
+            entities = self.model.predict_entities(text, self.labels, threshold=0.5)
+            seen = set()
+            for entity in entities:
+                entity_text = entity["text"].strip()
+                label = entity["label"]
+                key = (entity_text.lower(), label)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "entity": entity_text,
+                    "label": label,
+                    "confidence": round(entity["score"], 3),
+                    "source_comment": text,
+                    "username": comment.get("username", ""),
+                    "comment_like_count": comment.get("like_count", 0),
+                })
+
+        return results
